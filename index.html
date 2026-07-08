@@ -382,6 +382,7 @@
   <!-- Quiz Page -->
   <div class="page" id="page-quiz">
     <div class="page-title">🎯 測驗</div>
+    <div class="deck-selector" id="quiz-deck-selector"></div>
     <div class="quiz-mode-selector">
       <button class="quiz-mode-btn active" id="mode-choice" onclick="setQuizMode('choice')">📋 選擇題</button>
       <button class="quiz-mode-btn" id="mode-spell" onclick="setQuizMode('spell')">✏️ 拼字填空</button>
@@ -392,11 +393,15 @@
   <!-- Word List Page -->
   <div class="page" id="page-list">
     <div class="page-title">📖 單字本</div>
-    <input type="text" class="search-bar" placeholder="搜尋單字..." oninput="filterWords(this.value)">
+    <div class="deck-selector" id="list-deck-selector"></div>
     <div class="import-export-btns">
       <button class="ie-btn" onclick="showImport()">📥 匯入</button>
       <button class="ie-btn" onclick="exportWords()">📤 匯出</button>
+      <button class="ie-btn" onclick="showAddDeck()">📁 新增分類</button>
+      <button class="ie-btn" onclick="renameDeckPrompt()" id="btn-rename-deck" style="display:none">✏️ 改名</button>
+      <button class="ie-btn" onclick="deleteDeckPrompt()" id="btn-delete-deck" style="display:none">🗑️ 刪除分類</button>
     </div>
+    <input type="text" class="search-bar" placeholder="搜尋單字..." oninput="filterWords(this.value)">
     <div class="word-list" id="word-list"></div>
   </div>
 
@@ -497,6 +502,8 @@
     let words = [];
     let currentIndex = 0;
     let currentDeck = "全部";
+    let listDeck = "全部";   // word list page deck filter
+    let quizDeck = "全部";   // quiz page deck filter
     let editingId = null;
     let quizWords = [];
     let quizIndex = 0;
@@ -526,8 +533,8 @@
       ].classList.add('active');
 
       if (page === 'cards') { setupCards(); }
-      if (page === 'quiz') { startQuiz(); }
-      if (page === 'list') { renderWordList(); }
+      if (page === 'quiz') { renderQuizDecks(); startQuiz(); }
+      if (page === 'list') { renderListDecks(); renderWordList(); }
       if (page === 'stats') { renderStats(); }
 
       document.getElementById('fab-btn').style.display =
@@ -535,16 +542,30 @@
     }
 
     // ===== DECKS =====
-    function getDecks() {
-      const decks = new Set(words.map(w => w.deck || '預設'));
-      return ['全部', ...decks];
-    }
-
     function renderDecks() {
       const container = document.getElementById('deck-selector');
       container.innerHTML = getDecks().map(d =>
         `<button class="deck-chip ${d === currentDeck ? 'active' : ''}"
                  onclick="selectDeck('${d}')">${d}</button>`
+      ).join('');
+    }
+
+    function renderListDecks() {
+      const container = document.getElementById('list-deck-selector');
+      container.innerHTML = getDecks().map(d =>
+        `<button class="deck-chip ${d === listDeck ? 'active' : ''}"
+                 onclick="selectListDeck('${d}')">${d}</button>`
+      ).join('');
+      // Show rename/delete buttons only when a specific deck is selected
+      document.getElementById('btn-rename-deck').style.display = (listDeck !== '全部') ? 'inline-block' : 'none';
+      document.getElementById('btn-delete-deck').style.display = (listDeck !== '全部') ? 'inline-block' : 'none';
+    }
+
+    function renderQuizDecks() {
+      const container = document.getElementById('quiz-deck-selector');
+      container.innerHTML = getDecks().map(d =>
+        `<button class="deck-chip ${d === quizDeck ? 'active' : ''}"
+                 onclick="selectQuizDeck('${d}')">${d}</button>`
       ).join('');
     }
 
@@ -555,9 +576,113 @@
       showCard();
     }
 
+    function selectListDeck(deck) {
+      listDeck = deck;
+      renderListDecks();
+      renderWordList();
+    }
+
+    function selectQuizDeck(deck) {
+      quizDeck = deck;
+      renderQuizDecks();
+      startQuiz();
+    }
+
     function getFilteredWords() {
       if (currentDeck === '全部') return words;
       return words.filter(w => (w.deck || '預設') === currentDeck);
+    }
+
+    function getListFilteredWords() {
+      if (listDeck === '全部') return words;
+      return words.filter(w => (w.deck || '預設') === listDeck);
+    }
+
+    function getQuizFilteredWords() {
+      if (quizDeck === '全部') return words;
+      return words.filter(w => (w.deck || '預設') === quizDeck);
+    }
+
+    // ===== DECK MANAGEMENT =====
+    function showAddDeck() {
+      const name = prompt('輸入新分類名稱：');
+      if (!name || !name.trim()) return;
+      const deckName = name.trim();
+      // Check if already exists
+      const existing = new Set(words.map(w => w.deck || '預設'));
+      if (existing.has(deckName)) {
+        alert('此分類已存在！');
+        return;
+      }
+      // Add a placeholder word so the deck shows up, then let user add words
+      // Actually just switch to it — user can add words into it
+      listDeck = deckName;
+      // We need at least one word with this deck for it to show up
+      // Save deck list separately
+      saveDeckList(deckName);
+      renderListDecks();
+      renderWordList();
+    }
+
+    function saveDeckList(newDeck) {
+      // Keep empty decks in a separate storage
+      let emptyDecks = JSON.parse(localStorage.getItem('vocabflash_emptydecks') || '[]');
+      if (!emptyDecks.includes(newDeck)) {
+        emptyDecks.push(newDeck);
+        localStorage.setItem('vocabflash_emptydecks', JSON.stringify(emptyDecks));
+      }
+    }
+
+    function getDecks() {
+      const decks = new Set(words.map(w => w.deck || '預設'));
+      // Also include empty decks
+      const emptyDecks = JSON.parse(localStorage.getItem('vocabflash_emptydecks') || '[]');
+      emptyDecks.forEach(d => decks.add(d));
+      return ['全部', ...Array.from(decks).sort()];
+    }
+
+    function renameDeckPrompt() {
+      if (listDeck === '全部') return;
+      const newName = prompt(`將「${listDeck}」改名為：`, listDeck);
+      if (!newName || !newName.trim() || newName.trim() === listDeck) return;
+      const trimmed = newName.trim();
+      // Rename in all words
+      words.forEach(w => {
+        if ((w.deck || '預設') === listDeck) w.deck = trimmed;
+      });
+      // Rename in empty decks
+      let emptyDecks = JSON.parse(localStorage.getItem('vocabflash_emptydecks') || '[]');
+      emptyDecks = emptyDecks.map(d => d === listDeck ? trimmed : d);
+      localStorage.setItem('vocabflash_emptydecks', JSON.stringify(emptyDecks));
+
+      listDeck = trimmed;
+      saveData();
+      renderListDecks();
+      renderWordList();
+    }
+
+    function deleteDeckPrompt() {
+      if (listDeck === '全部') return;
+      const count = words.filter(w => (w.deck || '預設') === listDeck).length;
+      let msg = `確定要刪除分類「${listDeck}」嗎？`;
+      if (count > 0) {
+        msg += `\n\n此分類有 ${count} 個單字，將全部移到「預設」分類。`;
+      }
+      if (!confirm(msg)) return;
+
+      // Move words to 預設
+      words.forEach(w => {
+        if ((w.deck || '預設') === listDeck) w.deck = '預設';
+      });
+      // Remove from empty decks
+      let emptyDecks = JSON.parse(localStorage.getItem('vocabflash_emptydecks') || '[]');
+      emptyDecks = emptyDecks.filter(d => d !== listDeck);
+      localStorage.setItem('vocabflash_emptydecks', JSON.stringify(emptyDecks));
+
+      listDeck = '全部';
+      saveData();
+      renderListDecks();
+      renderWordList();
     }
 
     // ===== CARDS =====
@@ -626,7 +751,7 @@
     }
 
     function startQuiz() {
-      const filtered = getFilteredWords();
+      const filtered = getQuizFilteredWords();
       if (filtered.length < 4) {
         document.getElementById('quiz-content').innerHTML =
           '<div class="empty-state"><div class="emoji">📝</div><p>需要至少 4 個單字才能開始測驗</p></div>';
@@ -807,16 +932,17 @@
     // ===== WORD LIST =====
     function renderWordList(filter = '') {
       const container = document.getElementById('word-list');
-      let filtered = words;
+      let filtered = getListFilteredWords();
       if (filter) {
         const q = filter.toLowerCase();
-        filtered = words.filter(w =>
+        filtered = filtered.filter(w =>
           w.word.toLowerCase().includes(q) || w.meaning.includes(q)
         );
       }
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><p>還沒有單字，按 + 新增</p></div>';
+        const msg = listDeck === '全部' ? '還沒有單字，按 + 新增' : `「${listDeck}」分類還沒有單字`;
+        container.innerHTML = `<div class="empty-state"><div class="emoji">📭</div><p>${msg}</p></div>`;
         return;
       }
 
@@ -830,6 +956,7 @@
             <div class="word-item-left">
               <h3>${w.word}</h3>
               <p>${w.meaning}</p>
+              <span style="font-size:11px;color:var(--text-dim)">📁 ${w.deck || '預設'}</span>
               ${badge}
             </div>
             <div class="word-item-actions">
@@ -851,7 +978,15 @@
       document.getElementById('form-meaning').value = '';
       document.getElementById('form-phonetic').value = '';
       document.getElementById('form-example').value = '';
-      document.getElementById('form-deck').value = currentDeck === '全部' ? '預設' : currentDeck;
+      // Use the current page's deck selection as default
+      const activePage = document.querySelector('.page.active');
+      let defaultDeck = '預設';
+      if (activePage && activePage.id === 'page-list' && listDeck !== '全部') {
+        defaultDeck = listDeck;
+      } else if (currentDeck !== '全部') {
+        defaultDeck = currentDeck;
+      }
+      document.getElementById('form-deck').value = defaultDeck;
       document.getElementById('form-overlay').classList.add('show');
     }
 
@@ -896,6 +1031,7 @@
       closeForm();
       renderWordList();
       renderDecks();
+      renderListDecks();
     }
 
     function deleteWord(id) {
@@ -903,6 +1039,7 @@
       words = words.filter(w => w.id !== id);
       saveData();
       renderWordList();
+      renderListDecks();
     }
 
     // ===== IMPORT/EXPORT =====
