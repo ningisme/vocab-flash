@@ -152,6 +152,64 @@
     }
     .quiz-score h2 { font-size: 48px; margin-bottom: 8px; }
     .quiz-score p { color: var(--text-dim); font-size: 18px; }
+    /* Quiz Mode Selector */
+    .quiz-mode-selector {
+      display: flex; gap: 8px; margin-bottom: 20px;
+    }
+    .quiz-mode-btn {
+      flex: 1; padding: 12px 8px; border-radius: 12px;
+      border: 2px solid var(--surface2); background: var(--surface);
+      color: var(--text-dim); font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s; text-align: center;
+    }
+    .quiz-mode-btn.active {
+      border-color: var(--accent); background: rgba(124,92,252,0.1);
+      color: var(--accent);
+    }
+    /* Spelling Quiz */
+    .spell-hint {
+      display: flex; justify-content: center; gap: 6px;
+      flex-wrap: wrap; margin: 20px 0;
+    }
+    .spell-letter {
+      width: 36px; height: 44px;
+      background: var(--surface2); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 700; color: var(--accent);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .spell-letter.hidden {
+      color: transparent; border-bottom: 2px solid var(--text-dim);
+      background: var(--bg);
+    }
+    .spell-input-wrap {
+      max-width: 400px; margin: 0 auto 16px;
+    }
+    .spell-input {
+      width: 100%; padding: 14px 18px;
+      background: var(--bg); border: 2px solid var(--surface2);
+      border-radius: 12px; color: var(--text);
+      font-size: 20px; font-weight: 600; text-align: center;
+      outline: none; transition: border-color 0.2s;
+      letter-spacing: 2px;
+    }
+    .spell-input:focus { border-color: var(--accent); }
+    .spell-input.correct { border-color: var(--green); color: var(--green); }
+    .spell-input.wrong { border-color: var(--red); color: var(--red); }
+    .spell-submit {
+      width: 100%; max-width: 400px; margin: 0 auto; display: block;
+      padding: 14px; border-radius: 12px; border: none;
+      background: var(--accent); color: white;
+      font-size: 16px; font-weight: 600; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .spell-submit:hover { background: var(--accent-hover); }
+    .spell-answer {
+      text-align: center; margin-top: 16px;
+      font-size: 18px; font-weight: 600;
+    }
+    .spell-answer.correct { color: var(--green); }
+    .spell-answer.wrong { color: var(--red); }
     /* Word List */
     .word-list { display: flex; flex-direction: column; gap: 8px; }
     .word-item {
@@ -324,6 +382,10 @@
   <!-- Quiz Page -->
   <div class="page" id="page-quiz">
     <div class="page-title">🎯 測驗</div>
+    <div class="quiz-mode-selector">
+      <button class="quiz-mode-btn active" id="mode-choice" onclick="setQuizMode('choice')">📋 選擇題</button>
+      <button class="quiz-mode-btn" id="mode-spell" onclick="setQuizMode('spell')">✏️ 拼字填空</button>
+    </div>
     <div id="quiz-content"></div>
   </div>
 
@@ -553,6 +615,16 @@
     }
 
     // ===== QUIZ =====
+    let quizMode = 'choice'; // 'choice' or 'spell'
+    let spellAnswered = false;
+
+    function setQuizMode(mode) {
+      quizMode = mode;
+      document.getElementById('mode-choice').classList.toggle('active', mode === 'choice');
+      document.getElementById('mode-spell').classList.toggle('active', mode === 'spell');
+      startQuiz();
+    }
+
     function startQuiz() {
       const filtered = getFilteredWords();
       if (filtered.length < 4) {
@@ -564,9 +636,15 @@
       quizWords = [...filtered].sort(() => Math.random() - 0.5).slice(0, Math.min(10, filtered.length));
       quizIndex = 0;
       quizScore = 0;
-      showQuizQuestion();
+
+      if (quizMode === 'choice') {
+        showQuizQuestion();
+      } else {
+        showSpellQuestion();
+      }
     }
 
+    // --- Choice mode (original) ---
     function showQuizQuestion() {
       if (quizIndex >= quizWords.length) {
         showQuizResult();
@@ -614,14 +692,112 @@
       setTimeout(() => { quizIndex++; showQuizQuestion(); }, 1200);
     }
 
+    // --- Spelling mode ---
+    function generateHint(word) {
+      // Show first letter, last letter, and some middle letters as hints
+      // Difficulty: reveal ~40% of letters
+      const len = word.length;
+      const letters = word.split('');
+      const revealed = new Array(len).fill(false);
+
+      // Always reveal first and last
+      revealed[0] = true;
+      if (len > 1) revealed[len - 1] = true;
+
+      // For words >= 5 letters, reveal some middle letters
+      if (len >= 5) {
+        const middleCount = Math.max(1, Math.floor((len - 2) * 0.3));
+        const middleIndices = [];
+        for (let i = 1; i < len - 1; i++) middleIndices.push(i);
+        // Shuffle middle indices and reveal some
+        middleIndices.sort(() => Math.random() - 0.5);
+        for (let i = 0; i < middleCount; i++) {
+          revealed[middleIndices[i]] = true;
+        }
+      }
+
+      return letters.map((ch, i) => ({
+        letter: ch,
+        show: revealed[i]
+      }));
+    }
+
+    function showSpellQuestion() {
+      if (quizIndex >= quizWords.length) {
+        showQuizResult();
+        return;
+      }
+
+      spellAnswered = false;
+      const current = quizWords[quizIndex];
+      const hint = generateHint(current.word);
+
+      const hintHtml = hint.map(h =>
+        `<div class="spell-letter ${h.show ? '' : 'hidden'}">${h.show ? h.letter : '?'}</div>`
+      ).join('');
+
+      document.getElementById('quiz-content').innerHTML = `
+        <div class="card-progress">${quizIndex + 1} / ${quizWords.length}</div>
+        <div class="quiz-question">
+          <div class="card-meaning" style="font-size:24px;color:var(--green);margin-bottom:8px">${current.meaning}</div>
+          <div class="card-phonetic">${current.phonetic || ''}</div>
+        </div>
+        <div class="spell-hint">${hintHtml}</div>
+        <div class="spell-input-wrap">
+          <input type="text" class="spell-input" id="spell-input"
+                 placeholder="輸入英文拼寫..."
+                 autocomplete="off" autocapitalize="none" spellcheck="false"
+                 onkeydown="if(event.key==='Enter')submitSpell()">
+        </div>
+        <button class="spell-submit" onclick="submitSpell()">確認 ↵</button>
+        <div id="spell-feedback"></div>
+      `;
+
+      // Auto-focus input
+      setTimeout(() => {
+        const inp = document.getElementById('spell-input');
+        if (inp) inp.focus();
+      }, 100);
+    }
+
+    function submitSpell() {
+      if (spellAnswered) return;
+      spellAnswered = true;
+
+      const input = document.getElementById('spell-input');
+      const answer = input.value.trim().toLowerCase();
+      const current = quizWords[quizIndex];
+      const correct = current.word.toLowerCase();
+
+      const isCorrect = answer === correct;
+      const idx = words.findIndex(w => w.id === current.id);
+
+      if (isCorrect) {
+        quizScore++;
+        input.classList.add('correct');
+        if (idx >= 0) words[idx].mastery = Math.min((words[idx].mastery || 0) + 1, 5);
+        document.getElementById('spell-feedback').innerHTML =
+          `<div class="spell-answer correct">✓ 正確！</div>`;
+      } else {
+        input.classList.add('wrong');
+        if (idx >= 0) words[idx].mastery = Math.max((words[idx].mastery || 0) - 1, 0);
+        document.getElementById('spell-feedback').innerHTML =
+          `<div class="spell-answer wrong">✗ 正確答案：<strong>${current.word}</strong></div>`;
+      }
+      saveData();
+
+      setTimeout(() => { quizIndex++; showSpellQuestion(); }, 1800);
+    }
+
     function showQuizResult() {
       const pct = Math.round((quizScore / quizWords.length) * 100);
       const emoji = pct >= 80 ? '🎉' : pct >= 60 ? '👍' : '💪';
+      const modeLabel = quizMode === 'choice' ? '選擇題' : '拼字填空';
       document.getElementById('quiz-content').innerHTML = `
         <div class="quiz-score">
           <div style="font-size:64px;margin-bottom:16px">${emoji}</div>
           <h2>${quizScore} / ${quizWords.length}</h2>
-          <p>正確率 ${pct}%</p>
+          <p>正確率 ${pct}%（${modeLabel}）</p>
           <button class="btn btn-primary" style="margin-top:24px;max-width:200px"
                   onclick="startQuiz()">再測一次</button>
         </div>
