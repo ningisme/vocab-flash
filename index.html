@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>VocabFlash</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #1a1a2e;
+      --surface: #25253e;
+      --surface2: #2d2d4a;
+      --accent: #7c5cfc;
+      --accent-hover: #9b7eff;
+      --text: #e8e8f0;
+      --text-dim: #8888a8;
+      --green: #4ecdc4;
+      --red: #ff6b6b;
+      --orange: #ffa84c;
+      --radius: 16px;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    /* Navigation */
+    .nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface);
+      display: flex; justify-content: space-around; align-items: center;
+      padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid rgba(255,255,255,0.05);
+      z-index: 100;
+    }
+    .nav-btn {
+      background: none; border: none; color: var(--text-dim);
+      font-size: 12px; display: flex; flex-direction: column;
+      align-items: center; gap: 4px; cursor: pointer;
+      transition: color 0.2s;
+    }
+    .nav-btn.active { color: var(--accent); }
+    .nav-btn svg { width: 24px; height: 24px; }
+    /* Pages */
+    .page { display: none; padding: 20px 20px 100px; min-height: 100vh; }
+    .page.active { display: block; }
+    .page-title {
+      font-size: 28px; font-weight: 700; margin-bottom: 24px;
+      padding-top: max(20px, env(safe-area-inset-top));
+    }
+    /* Cards Mode */
+    .card-container {
+      perspective: 1000px;
+      width: 100%; max-width: 400px; height: 280px;
+      margin: 0 auto 24px;
+    }
+    .card {
+      width: 100%; height: 100%;
+      position: relative;
+      transform-style: preserve-3d;
+      transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+    }
+    .card.flipped { transform: rotateY(180deg); }
+    .card-face {
+      position: absolute; width: 100%; height: 100%;
+      backface-visibility: hidden;
+      background: var(--surface);
+      border-radius: var(--radius);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .card-back { transform: rotateY(180deg); }
+    .card-word {
+      font-size: 36px; font-weight: 700; text-align: center;
+      margin-bottom: 8px;
+    }
+    .card-phonetic {
+      font-size: 16px; color: var(--text-dim); margin-bottom: 12px;
+    }
+    .card-meaning {
+      font-size: 24px; text-align: center; color: var(--green);
+    }
+    .card-example {
+      font-size: 14px; color: var(--text-dim); text-align: center;
+      margin-top: 12px; font-style: italic;
+    }
+    .card-controls {
+      display: flex; justify-content: center; gap: 16px;
+      max-width: 400px; margin: 0 auto;
+    }
+    .card-btn {
+      width: 56px; height: 56px; border-radius: 50%;
+      border: none; cursor: pointer; font-size: 24px;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card-btn:active { transform: scale(0.9); }
+    .btn-know { background: var(--green); color: #1a1a2e; }
+    .btn-dunno { background: var(--red); color: white; }
+    .btn-skip { background: var(--surface2); color: var(--text-dim); }
+    .card-progress {
+      text-align: center; color: var(--text-dim);
+      font-size: 14px; margin-bottom: 16px;
+    }
+    .card-hint {
+      text-align: center; color: var(--text-dim);
+      font-size: 13px; margin-top: 16px;
+    }
+    /* Quiz Mode */
+    .quiz-question {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 32px 24px;
+      text-align: center;
+      margin-bottom: 24px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .quiz-word {
+      font-size: 32px; font-weight: 700; margin-bottom: 8px;
+    }
+    .quiz-options {
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .quiz-option {
+      background: var(--surface);
+      border: 2px solid var(--surface2);
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 17px; color: var(--text);
+      cursor: pointer; transition: all 0.2s;
+      text-align: left;
+    }
+    .quiz-option:active { transform: scale(0.98); }
+    .quiz-option.correct {
+      border-color: var(--green); background: rgba(78,205,196,0.1);
+    }
+    .quiz-option.wrong {
+      border-color: var(--red); background: rgba(255,107,107,0.1);
+    }
+    .quiz-score {
+      text-align: center; padding: 40px 20px;
+    }
+    .quiz-score h2 { font-size: 48px; margin-bottom: 8px; }
+    .quiz-score p { color: var(--text-dim); font-size: 18px; }
+    /* Word List */
+    .word-list { display: flex; flex-direction: column; gap: 8px; }
+    .word-item {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex; justify-content: space-between; align-items: center;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .word-item-left h3 { font-size: 18px; font-weight: 600; }
+    .word-item-left p { font-size: 14px; color: var(--text-dim); margin-top: 4px; }
+    .word-item-actions { display: flex; gap: 8px; }
+    .word-item-btn {
+      background: var(--surface2); border: none; color: var(--text-dim);
+      width: 36px; height: 36px; border-radius: 8px;
+      cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .word-item-btn:hover { color: var(--text); }
+    .word-item-btn.delete:hover { color: var(--red); }
+    /* Stats badges */
+    .mastery-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; margin-top: 4px;
+    }
+    .mastery-new { background: rgba(124,92,252,0.2); color: var(--accent); }
+    .mastery-learning { background: rgba(255,168,76,0.2); color: var(--orange); }
+    .mastery-known { background: rgba(78,205,196,0.2); color: var(--green); }
+    /* Add/Edit Form */
+    .form-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7); z-index: 200;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    .form-overlay.show { display: flex; }
+    .form-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 28px; width: 100%; max-width: 380px;
+    }
+    .form-card h2 { margin-bottom: 20px; font-size: 22px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block; font-size: 13px; color: var(--text-dim);
+      margin-bottom: 6px; font-weight: 500;
+    }
+    .form-group input, .form-group textarea {
+      width: 100%; padding: 12px 14px;
+      background: var(--bg); border: 1px solid var(--surface2);
+      border-radius: 10px; color: var(--text);
+      font-size: 16px; outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus, .form-group textarea:focus {
+      border-color: var(--accent);
+    }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+    .form-actions { display: flex; gap: 12px; margin-top: 20px; }
+    .btn {
+      flex: 1; padding: 14px;
+      border-radius: 10px; border: none;
+      font-size: 16px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface2); color: var(--text); }
+    /* FAB */
+    .fab {
+      position: fixed; bottom: 90px; right: 20px;
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--accent); color: white;
+      border: none; font-size: 28px;
+      cursor: pointer; z-index: 50;
+      box-shadow: 0 4px 20px rgba(124,92,252,0.4);
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.2s;
+    }
+    .fab:active { transform: scale(0.9); }
+    /* Stats Page */
+    .stats-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 20px; text-align: center;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .stat-number { font-size: 36px; font-weight: 700; }
+    .stat-label { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+    .stat-number.accent { color: var(--accent); }
+    .stat-number.green { color: var(--green); }
+    .stat-number.orange { color: var(--orange); }
+    .stat-number.red { color: var(--red); }
+    /* Search */
+    .search-bar {
+      width: 100%; padding: 12px 16px;
+      background: var(--surface); border: 1px solid var(--surface2);
+      border-radius: 12px; color: var(--text);
+      font-size: 16px; outline: none; margin-bottom: 16px;
+    }
+    .search-bar:focus { border-color: var(--accent); }
+    /* Empty state */
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--text-dim);
+    }
+    .empty-state .emoji { font-size: 48px; margin-bottom: 16px; }
+    .empty-state p { font-size: 16px; }
+    /* Deck selector */
+    .deck-selector {
+      display: flex; gap: 8px; margin-bottom: 20px;
+      overflow-x: auto; padding-bottom: 8px;
+    }
+    .deck-chip {
+      background: var(--surface2); border: none;
+      padding: 8px 16px; border-radius: 20px;
+      color: var(--text-dim); font-size: 14px;
+      cursor: pointer; white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .deck-chip.active {
+      background: var(--accent); color: white;
+    }
+    /* Swipe hint animation */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .page.active { animation: fadeIn 0.3s ease; }
+    /* Import/Export */
+    .import-export-btns {
+      display: flex; gap: 8px; margin-bottom: 16px;
+    }
+    .ie-btn {
+      background: var(--surface2); border: none;
+      padding: 10px 16px; border-radius: 10px;
+      color: var(--text-dim); font-size: 13px;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .ie-btn:hover { color: var(--text); background: var(--accent); }
+  </style>
+</head>
+<body>
+  <!-- Cards Page -->
+  <div class="page active" id="page-cards">
+    <div class="page-title">📚 單字卡</div>
+    <div class="deck-selector" id="deck-selector"></div>
+    <div class="card-progress" id="card-progress"></div>
+    <div class="card-container" id="card-container">
+      <div class="card" id="flashcard" onclick="flipCard()">
+        <div class="card-face card-front">
+          <div class="card-word" id="card-word"></div>
+          <div class="card-phonetic" id="card-phonetic"></div>
+        </div>
+        <div class="card-face card-back">
+          <div class="card-meaning" id="card-meaning"></div>
+          <div class="card-example" id="card-example"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-hint">👆 點擊翻面</div>
+    <div class="card-controls">
+      <button class="card-btn btn-dunno" onclick="markWord('dunno')" title="不熟">✗</button>
+      <button class="card-btn btn-skip" onclick="markWord('skip')" title="跳過">→</button>
+      <button class="card-btn btn-know" onclick="markWord('know')" title="認識">✓</button>
+    </div>
+  </div>
+
+  <!-- Quiz Page -->
+  <div class="page" id="page-quiz">
+    <div class="page-title">🎯 測驗</div>
+    <div id="quiz-content"></div>
+  </div>
+
+  <!-- Word List Page -->
+  <div class="page" id="page-list">
+    <div class="page-title">📖 單字本</div>
+    <input type="text" class="search-bar" placeholder="搜尋單字..." oninput="filterWords(this.value)">
+    <div class="import-export-btns">
+      <button class="ie-btn" onclick="showImport()">📥 匯入</button>
+      <button class="ie-btn" onclick="exportWords()">📤 匯出</button>
+    </div>
+    <div class="word-list" id="word-list"></div>
+  </div>
+
+  <!-- Stats Page -->
+  <div class="page" id="page-stats">
+    <div class="page-title">📊 統計</div>
+    <div class="stats-grid" id="stats-grid"></div>
+  </div>
+
+  <!-- Add/Edit Form -->
+  <div class="form-overlay" id="form-overlay">
+    <div class="form-card">
+      <h2 id="form-title">新增單字</h2>
+      <div class="form-group">
+        <label>英文單字</label>
+        <input type="text" id="form-word" placeholder="apple" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>中文意思</label>
+        <input type="text" id="form-meaning" placeholder="蘋果" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>音標（選填）</label>
+        <input type="text" id="form-phonetic" placeholder="/ˈæp.əl/">
+      </div>
+      <div class="form-group">
+        <label>例句（選填）</label>
+        <textarea id="form-example" placeholder="An apple a day keeps the doctor away."></textarea>
+      </div>
+      <div class="form-group">
+        <label>分類</label>
+        <input type="text" id="form-deck" placeholder="預設" autocomplete="off">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-secondary" onclick="closeForm()">取消</button>
+        <button class="btn btn-primary" onclick="saveWord()">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Form -->
+  <div class="form-overlay" id="import-overlay">
+    <div class="form-card">
+      <h2>📥 匯入單字</h2>
+      <div class="form-group">
+        <label>格式：每行一個，英文 + Tab或逗號 + 中文</label>
+        <textarea id="import-text" rows="10" placeholder="apple, 蘋果&#10;banana, 香蕉&#10;cat, 貓"></textarea>
+      </div>
+      <div class="form-group">
+        <label>分類</label>
+        <input type="text" id="import-deck" placeholder="預設" value="匯入">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-secondary" onclick="closeImport()">取消</button>
+        <button class="btn btn-primary" onclick="doImport()">匯入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAB -->
+  <button class="fab" onclick="showAddForm()" id="fab-btn">+</button>
+
+  <!-- Navigation -->
+  <nav class="nav">
+    <button class="nav-btn active" onclick="switchPage('cards')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 12h6M12 9v6"/></svg>
+      <span>卡片</span>
+    </button>
+    <button class="nav-btn" onclick="switchPage('quiz')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg>
+      <span>測驗</span>
+    </button>
+    <button class="nav-btn" onclick="switchPage('list')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span>單字本</span>
+    </button>
+    <button class="nav-btn" onclick="switchPage('stats')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-6M22 20v-2"/></svg>
+      <span>統計</span>
+    </button>
+  </nav>
+
+  <script>
+    // ===== DATA =====
+    const DEFAULT_WORDS = [
+      { word: "abandon", meaning: "放棄；拋棄", phonetic: "/əˈbæn.dən/", example: "They had to abandon the project.", deck: "預設", mastery: 0, lastSeen: 0 },
+      { word: "benefit", meaning: "好處；利益", phonetic: "/ˈben.ɪ.fɪt/", example: "Exercise has many health benefits.", deck: "預設", mastery: 0, lastSeen: 0 },
+      { word: "comprehensive", meaning: "全面的；綜合的", phonetic: "/ˌkɒm.prɪˈhen.sɪv/", example: "A comprehensive study of the issue.", deck: "預設", mastery: 0, lastSeen: 0 },
+      { word: "diminish", meaning: "減少；縮小", phonetic: "/dɪˈmɪn.ɪʃ/", example: "The pain will gradually diminish.", deck: "預設", mastery: 0, lastSeen: 0 },
+      { word: "elaborate", meaning: "詳盡的；精心製作的", phonetic: "/ɪˈlæb.ər.ət/", example: "She gave an elaborate explanation.", deck: "預設", mastery: 0, lastSeen: 0 },
+      { word: "flourish", meaning: "繁榮；茂盛", phonetic: "/ˈflʌr.ɪʃ/", example: "The business began to flourish.", deck: "預設", mastery: 0, lastSeen: 0 },
+      { word: "genuine", meaning: "真正的；真誠的", phonetic: "/ˈdʒen.ju.ɪn/", example: "He showed genuine concern.", deck: "預設", mastery: 0, lastSeen: 0 },
+      { word: "hypothesis", meaning: "假設；假說", phonetic: "/haɪˈpɒθ.ə.sɪs/", example: "We need to test this hypothesis.", deck: "預設", mastery: 0, lastSeen: 0 },
+      { word: "inevitable", meaning: "不可避免的", phonetic: "/ɪˈnev.ɪ.tə.bəl/", example: "Change is inevitable.", deck: "預設", mastery: 0, lastSeen: 0 },
+      { word: "justify", meaning: "證明⋯正當；辯護", phonetic: "/ˈdʒʌs.tɪ.faɪ/", example: "How can you justify such expense?", deck: "預設", mastery: 0, lastSeen: 0 },
+    ];
+
+    let words = [];
+    let currentIndex = 0;
+    let currentDeck = "全部";
+    let editingId = null;
+    let quizWords = [];
+    let quizIndex = 0;
+    let quizScore = 0;
+
+    function loadData() {
+      const saved = localStorage.getItem('vocabflash_words');
+      if (saved) {
+        words = JSON.parse(saved);
+      } else {
+        words = DEFAULT_WORDS.map((w, i) => ({ ...w, id: Date.now() + i }));
+        saveData();
+      }
+    }
+
+    function saveData() {
+      localStorage.setItem('vocabflash_words', JSON.stringify(words));
+    }
+
+    // ===== NAVIGATION =====
+    function switchPage(page) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('page-' + page).classList.add('active');
+      document.querySelectorAll('.nav-btn')[
+        ['cards','quiz','list','stats'].indexOf(page)
+      ].classList.add('active');
+
+      if (page === 'cards') { setupCards(); }
+      if (page === 'quiz') { startQuiz(); }
+      if (page === 'list') { renderWordList(); }
+      if (page === 'stats') { renderStats(); }
+
+      document.getElementById('fab-btn').style.display =
+        (page === 'list' || page === 'cards') ? 'flex' : 'none';
+    }
+
+    // ===== DECKS =====
+    function getDecks() {
+      const decks = new Set(words.map(w => w.deck || '預設'));
+      return ['全部', ...decks];
+    }
+
+    function renderDecks() {
+      const container = document.getElementById('deck-selector');
+      container.innerHTML = getDecks().map(d =>
+        `<button class="deck-chip ${d === currentDeck ? 'active' : ''}"
+                 onclick="selectDeck('${d}')">${d}</button>`
+      ).join('');
+    }
+
+    function selectDeck(deck) {
+      currentDeck = deck;
+      currentIndex = 0;
+      renderDecks();
+      showCard();
+    }
+
+    function getFilteredWords() {
+      if (currentDeck === '全部') return words;
+      return words.filter(w => (w.deck || '預設') === currentDeck);
+    }
+
+    // ===== CARDS =====
+    function setupCards() {
+      renderDecks();
+      currentIndex = 0;
+      showCard();
+    }
+
+    function showCard() {
+      const filtered = getFilteredWords();
+      const card = document.getElementById('flashcard');
+      card.classList.remove('flipped');
+
+      if (filtered.length === 0) {
+        document.getElementById('card-word').textContent = '📭';
+        document.getElementById('card-phonetic').textContent = '還沒有單字';
+        document.getElementById('card-meaning').textContent = '';
+        document.getElementById('card-example').textContent = '';
+        document.getElementById('card-progress').textContent = '';
+        return;
+      }
+
+      if (currentIndex >= filtered.length) currentIndex = 0;
+      const w = filtered[currentIndex];
+
+      document.getElementById('card-word').textContent = w.word;
+      document.getElementById('card-phonetic').textContent = w.phonetic || '';
+      document.getElementById('card-meaning').textContent = w.meaning;
+      document.getElementById('card-example').textContent = w.example || '';
+      document.getElementById('card-progress').textContent =
+        `${currentIndex + 1} / ${filtered.length}`;
+    }
+
+    function flipCard() {
+      document.getElementById('flashcard').classList.toggle('flipped');
+    }
+
+    function markWord(action) {
+      const filtered = getFilteredWords();
+      if (filtered.length === 0) return;
+      const w = filtered[currentIndex];
+      const idx = words.findIndex(x => x.id === w.id);
+
+      if (action === 'know') {
+        words[idx].mastery = Math.min((words[idx].mastery || 0) + 1, 5);
+      } else if (action === 'dunno') {
+        words[idx].mastery = Math.max((words[idx].mastery || 0) - 1, 0);
+      }
+      words[idx].lastSeen = Date.now();
+      saveData();
+
+      currentIndex++;
+      showCard();
+    }
+
+    // ===== QUIZ =====
+    function startQuiz() {
+      const filtered = getFilteredWords();
+      if (filtered.length < 4) {
+        document.getElementById('quiz-content').innerHTML =
+          '<div class="empty-state"><div class="emoji">📝</div><p>需要至少 4 個單字才能開始測驗</p></div>';
+        return;
+      }
+
+      quizWords = [...filtered].sort(() => Math.random() - 0.5).slice(0, Math.min(10, filtered.length));
+      quizIndex = 0;
+      quizScore = 0;
+      showQuizQuestion();
+    }
+
+    function showQuizQuestion() {
+      if (quizIndex >= quizWords.length) {
+        showQuizResult();
+        return;
+      }
+
+      const current = quizWords[quizIndex];
+      const others = words.filter(w => w.id !== current.id)
+        .sort(() => Math.random() - 0.5).slice(0, 3);
+      const options = [...others.map(w => w.meaning), current.meaning]
+        .sort(() => Math.random() - 0.5);
+
+      document.getElementById('quiz-content').innerHTML = `
+        <div class="card-progress">${quizIndex + 1} / ${quizWords.length}</div>
+        <div class="quiz-question">
+          <div class="quiz-word">${current.word}</div>
+          <div class="card-phonetic">${current.phonetic || ''}</div>
+        </div>
+        <div class="quiz-options">
+          ${options.map(opt => `
+            <button class="quiz-option" onclick="answerQuiz(this, '${escapeHtml(opt)}', '${escapeHtml(current.meaning)}')">${opt}</button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function answerQuiz(el, selected, correct) {
+      const options = document.querySelectorAll('.quiz-option');
+      options.forEach(opt => {
+        opt.onclick = null;
+        if (opt.textContent === correct) opt.classList.add('correct');
+        if (opt === el && selected !== correct) opt.classList.add('wrong');
+      });
+
+      if (selected === correct) {
+        quizScore++;
+        const idx = words.findIndex(w => w.id === quizWords[quizIndex].id);
+        if (idx >= 0) words[idx].mastery = Math.min((words[idx].mastery || 0) + 1, 5);
+      } else {
+        const idx = words.findIndex(w => w.id === quizWords[quizIndex].id);
+        if (idx >= 0) words[idx].mastery = Math.max((words[idx].mastery || 0) - 1, 0);
+      }
+      saveData();
+
+      setTimeout(() => { quizIndex++; showQuizQuestion(); }, 1200);
+    }
+
+    function showQuizResult() {
+      const pct = Math.round((quizScore / quizWords.length) * 100);
+      const emoji = pct >= 80 ? '🎉' : pct >= 60 ? '👍' : '💪';
+      document.getElementById('quiz-content').innerHTML = `
+        <div class="quiz-score">
+          <div style="font-size:64px;margin-bottom:16px">${emoji}</div>
+          <h2>${quizScore} / ${quizWords.length}</h2>
+          <p>正確率 ${pct}%</p>
+          <button class="btn btn-primary" style="margin-top:24px;max-width:200px"
+                  onclick="startQuiz()">再測一次</button>
+        </div>
+      `;
+    }
+
+    // ===== WORD LIST =====
+    function renderWordList(filter = '') {
+      const container = document.getElementById('word-list');
+      let filtered = words;
+      if (filter) {
+        const q = filter.toLowerCase();
+        filtered = words.filter(w =>
+          w.word.toLowerCase().includes(q) || w.meaning.includes(q)
+        );
+      }
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><p>還沒有單字，按 + 新增</p></div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(w => {
+        const m = w.mastery || 0;
+        const badge = m >= 4 ? '<span class="mastery-badge mastery-known">已熟悉</span>' :
+                     m >= 2 ? '<span class="mastery-badge mastery-learning">學習中</span>' :
+                     '<span class="mastery-badge mastery-new">新單字</span>';
+        return `
+          <div class="word-item">
+            <div class="word-item-left">
+              <h3>${w.word}</h3>
+              <p>${w.meaning}</p>
+              ${badge}
+            </div>
+            <div class="word-item-actions">
+              <button class="word-item-btn" onclick="editWord(${w.id})">✎</button>
+              <button class="word-item-btn delete" onclick="deleteWord(${w.id})">✕</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function filterWords(val) { renderWordList(val); }
+
+    // ===== ADD/EDIT =====
+    function showAddForm() {
+      editingId = null;
+      document.getElementById('form-title').textContent = '新增單字';
+      document.getElementById('form-word').value = '';
+      document.getElementById('form-meaning').value = '';
+      document.getElementById('form-phonetic').value = '';
+      document.getElementById('form-example').value = '';
+      document.getElementById('form-deck').value = currentDeck === '全部' ? '預設' : currentDeck;
+      document.getElementById('form-overlay').classList.add('show');
+    }
+
+    function editWord(id) {
+      const w = words.find(x => x.id === id);
+      if (!w) return;
+      editingId = id;
+      document.getElementById('form-title').textContent = '編輯單字';
+      document.getElementById('form-word').value = w.word;
+      document.getElementById('form-meaning').value = w.meaning;
+      document.getElementById('form-phonetic').value = w.phonetic || '';
+      document.getElementById('form-example').value = w.example || '';
+      document.getElementById('form-deck').value = w.deck || '預設';
+      document.getElementById('form-overlay').classList.add('show');
+    }
+
+    function closeForm() {
+      document.getElementById('form-overlay').classList.remove('show');
+    }
+
+    function saveWord() {
+      const word = document.getElementById('form-word').value.trim();
+      const meaning = document.getElementById('form-meaning').value.trim();
+      if (!word || !meaning) return alert('請填寫英文單字和中文意思');
+
+      const data = {
+        word,
+        meaning,
+        phonetic: document.getElementById('form-phonetic').value.trim(),
+        example: document.getElementById('form-example').value.trim(),
+        deck: document.getElementById('form-deck').value.trim() || '預設',
+      };
+
+      if (editingId) {
+        const idx = words.findIndex(w => w.id === editingId);
+        if (idx >= 0) Object.assign(words[idx], data);
+      } else {
+        words.push({ ...data, id: Date.now(), mastery: 0, lastSeen: 0 });
+      }
+
+      saveData();
+      closeForm();
+      renderWordList();
+      renderDecks();
+    }
+
+    function deleteWord(id) {
+      if (!confirm('確定要刪除這個單字嗎？')) return;
+      words = words.filter(w => w.id !== id);
+      saveData();
+      renderWordList();
+    }
+
+    // ===== IMPORT/EXPORT =====
+    function showImport() {
+      document.getElementById('import-overlay').classList.add('show');
+    }
+    function closeImport() {
+      document.getElementById('import-overlay').classList.remove('show');
+    }
+    function doImport() {
+      const text = document.getElementById('import-text').value.trim();
+      const deck = document.getElementById('import-deck').value.trim() || '匯入';
+      if (!text) return;
+
+      const lines = text.split('\n').filter(l => l.trim());
+      let count = 0;
+      lines.forEach(line => {
+        const parts = line.split(/[,\t]/).map(s => s.trim());
+        if (parts.length >= 2) {
+          words.push({
+            id: Date.now() + count,
+            word: parts[0],
+            meaning: parts[1],
+            phonetic: parts[2] || '',
+            example: parts[3] || '',
+            deck: deck,
+            mastery: 0,
+            lastSeen: 0
+          });
+          count++;
+        }
+      });
+
+      saveData();
+      closeImport();
+      renderWordList();
+      alert(`成功匯入 ${count} 個單字！`);
+    }
+
+    function exportWords() {
+      const csv = words.map(w =>
+        `${w.word}\t${w.meaning}\t${w.phonetic || ''}\t${w.example || ''}\t${w.deck || '預設'}`
+      ).join('\n');
+      const blob = new Blob([csv], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'vocab_export.txt';
+      a.click(); URL.revokeObjectURL(url);
+    }
+
+    // ===== STATS =====
+    function renderStats() {
+      const total = words.length;
+      const known = words.filter(w => (w.mastery || 0) >= 4).length;
+      const learning = words.filter(w => (w.mastery || 0) >= 2 && (w.mastery || 0) < 4).length;
+      const newW = words.filter(w => (w.mastery || 0) < 2).length;
+      const todayStudied = words.filter(w => {
+        const d = new Date(w.lastSeen || 0);
+        const today = new Date();
+        return d.toDateString() === today.toDateString();
+      }).length;
+
+      document.getElementById('stats-grid').innerHTML = `
+        <div class="stat-card">
+          <div class="stat-number accent">${total}</div>
+          <div class="stat-label">總單字數</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number green">${known}</div>
+          <div class="stat-label">已熟悉</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number orange">${learning}</div>
+          <div class="stat-label">學習中</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number red">${newW}</div>
+          <div class="stat-label">新單字</div>
+        </div>
+        <div class="stat-card" style="grid-column: span 2">
+          <div class="stat-number accent">${todayStudied}</div>
+          <div class="stat-label">今日複習</div>
+        </div>
+      `;
+    }
+
+    // ===== UTILS =====
+    function escapeHtml(str) {
+      return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+
+    // ===== INIT =====
+    loadData();
+    setupCards();
+
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
